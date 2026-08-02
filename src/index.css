@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+body {
+  @apply bg-base text-ink-primary font-sans antialiased;
+  background-color: #09090b;
+}
+
+::selection {
+  background: rgba(74, 222, 128, 0.25);
+  color: #e4e4e7;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+::-webkit-scrollbar-thumb {
+  background: #1f2a22;
+  border-radius: 8px;
+  border: 2px solid #09090b;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2c3b30;
+}
+
+/* Visible keyboard focus everywhere */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #4ade80;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-white/[0.03] backdrop-blur-xl border border-border-glass rounded-2xl shadow-panel;
+  }
+
+  .glass-panel-hover {
+    @apply transition-all duration-300 hover:bg-white/[0.05] hover:border-term-green/30;
+  }
+
+  .eyebrow {
+    @apply font-mono text-xs uppercase tracking-[0.25em] text-term-greenDim;
+  }
+
+  .section-heading {
+    @apply font-mono text-3xl sm:text-4xl md:text-5xl font-bold text-ink-primary tracking-tight;
+  }
+
+  .prompt-line::before {
+    content: "$ ";
+    @apply text-term-greenDim;
+  }
+
+  .bg-grid-fade {
+    background-image: linear-gradient(rgba(74, 222, 128, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(74, 222, 128, 0.06) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 40%, transparent 100%);
+  }
+}
+
+/* Terminal caret */
+.caret {
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.1em;
+  background: #4ade80;
+  vertical-align: text-bottom;
+  margin-left: 2px;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.8);
+}
