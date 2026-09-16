@@ -7,6 +7,7 @@ import Projects from "@/components/sections/Projects";
 import GithubStats from "@/components/sections/GithubStats";
 import Contact from "@/components/sections/Contact";
 import Footer from "@/components/sections/Footer";
+import AchievementAtlas from "@/components/Atlas/AchievementAtlas";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
       <main>
         <Hero />
         <About />
+        <AchievementAtlas />
         <Skills />
         <Projects />
         <GithubStats />

@@ -4,6 +4,7 @@ import { FiTerminal, FiMenu, FiX } from "react-icons/fi";
 
 const LINKS = [
   { id: "about", label: "about" },
+  { id: "atlas", label: "atlas" },
   { id: "skills", label: "skills" },
   { id: "projects", label: "projects" },
   { id: "github-stats", label: "github" },
