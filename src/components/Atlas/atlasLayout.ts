@@ -13,6 +13,14 @@ export const DOMAIN_COLORS: Record<AtlasDomain, string> = {
 };
 
 /**
+ * Ordered stops for the scroll journey: heaviest achievements first, with a
+ * stable tie-break so the route is byte-identical on every render.
+ */
+export function buildJourneyStops(nodes: AtlasNode[]): AtlasNode[] {
+  return [...nodes].sort((a, b) => b.weight - a.weight || a.id.localeCompare(b.id));
+}
+
+/**
  * Deterministic string hash → 0–1. Used for small position jitter so the map
  * looks hand-placed but is byte-identical on every render and reload.
  */

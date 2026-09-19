@@ -1,18 +1,21 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { FiArrowUpRight, FiRotateCcw } from "react-icons/fi";
+import { FiArrowUpRight, FiCompass, FiMap, FiRotateCcw } from "react-icons/fi";
 import SectionLabel from "@/components/ui/SectionLabel";
 import Reveal from "@/components/ui/Reveal";
 import { ATLAS_DOMAINS, achievements } from "@/data/achievements";
-import type { AtlasDomain } from "@/types";
-import { DOMAIN_COLORS, buildAtlasNodes } from "./atlasLayout";
+import type { AtlasAchievement, AtlasDomain } from "@/types";
+import { DOMAIN_COLORS, buildAtlasNodes, buildJourneyStops } from "./atlasLayout";
 
 // three.js is ~300 kB gzipped, so the WebGL engine is split into its own chunk
 // and only fetched once the viewport gets near this section.
 const AtlasCanvas = lazy(() => import("./AtlasCanvas"));
+const Timeline3D = lazy(() => import("./Timeline3D"));
 
 const WEIGHT_BARS = [1, 2, 3, 4, 5];
+
+type AtlasView = "orbit" | "journey";
 
 /** Cheap WebGL probe so we can fall back gracefully on locked-down machines. */
 function detectWebGL(): boolean {
@@ -103,11 +106,90 @@ function AtlasLoading() {
   );
 }
 
+/* ── Inspector (shared by orbit + journey views) ─────────────────────── */
+
+function InspectorPanel({
+  selected,
+  onClose,
+}: {
+  selected: AtlasAchievement;
+  onClose: () => void;
+}) {
+  return (
+    <motion.aside
+      initial={{ opacity: 0, x: 28 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 28 }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      className="absolute inset-y-0 right-0 z-10 w-full max-w-sm overflow-y-auto border-l border-border-glass bg-base/92 p-5 backdrop-blur-xl"
+    >
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <span
+          className="rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider"
+          style={{
+            color: DOMAIN_COLORS[selected.domain],
+            borderColor: `${DOMAIN_COLORS[selected.domain]}40`,
+            backgroundColor: `${DOMAIN_COLORS[selected.domain]}14`,
+          }}
+        >
+          {ATLAS_DOMAINS.find((d) => d.id === selected.domain)?.label}
+        </span>
+
+        <button
+          onClick={onClose}
+          aria-label="Close inspector"
+          className="rounded-md p-1 text-ink-faint transition-colors hover:text-term-green"
+        >
+          ✕
+        </button>
+      </div>
+
+      <h3 className="font-mono text-lg font-semibold leading-snug text-ink-primary">
+        {selected.title}
+      </h3>
+
+      {selected.period && (
+        <p className="mt-1 font-mono text-[11px] text-ink-faint">{selected.period}</p>
+      )}
+
+      <p className="mt-4 text-sm leading-relaxed text-ink-muted">
+        {selected.detail ?? selected.summary}
+      </p>
+
+      {selected.meta && selected.meta.length > 0 && (
+        <div className="mt-5 flex flex-wrap gap-1.5">
+          {selected.meta.map((item) => (
+            <span
+              key={item}
+              className="rounded-md border border-white/[0.06] bg-white/[0.04] px-2 py-1 font-mono text-[11px] text-ink-muted"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {selected.href && (
+        <a
+          href={selected.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-6 inline-flex items-center gap-2 rounded-lg border border-term-green/30 bg-term-green/10 px-4 py-2.5 font-mono text-xs text-term-green transition-colors hover:bg-term-green/20"
+        >
+          View source <FiArrowUpRight />
+        </a>
+      )}
+    </motion.aside>
+  );
+}
+
 /* ── Section ─────────────────────────────────────────────────────────── */
 
 export default function AchievementAtlas() {
   const reduceMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
+  const journeyRef = useRef<HTMLDivElement>(null);
+  const spacerRef = useRef<HTMLDivElement>(null);
 
   // Orbiting necessarily ends in a "click" on empty space, which would clear
   // the selection every time the user rotates the camera. Track drag distance
@@ -120,6 +202,8 @@ export default function AchievementAtlas() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [activeDomain, setActiveDomain] = useState<AtlasDomain | null>(null);
   const [autoRotate, setAutoRotate] = useState(true);
+  const [view, setView] = useState<AtlasView>("orbit");
+  const [journeyProgress, setJourneyProgress] = useState(0);
 
   useEffect(() => {
     setWebgl(detectWebGL());
@@ -129,7 +213,17 @@ export default function AchievementAtlas() {
   const nodes = useMemo(() => buildAtlasNodes(achievements, ATLAS_DOMAINS), []);
 
   const canRender3D = webgl && !reduceMotion;
+  // The journey needs live WebGL and smooth scrolling; anything less falls
+  // back to the orbit map / static view.
+  const activeView: AtlasView = canRender3D ? view : "orbit";
   const selected = selectedId ? achievements.find((item) => item.id === selectedId) : undefined;
+
+  /** Nearest achievement to the journey camera, for the "now passing" HUD label. */
+  const journeyStop = useMemo(() => {
+    const ordered = buildJourneyStops(nodes);
+    const index = Math.round(journeyProgress * Math.max(0, ordered.length - 1));
+    return { node: ordered[index] ?? null, index, total: ordered.length };
+  }, [nodes, journeyProgress]);
 
   // Only pull the 3D chunk once the map is close to entering the viewport.
   useEffect(() => {
@@ -153,12 +247,14 @@ export default function AchievementAtlas() {
 
     observer.observe(element);
     return () => observer.disconnect();
-  }, [canRender3D]);
+  }, [canRender3D, activeView]);
 
   const handleSelect = useCallback((id: string | null) => {
     setSelectedId(id);
     setAutoRotate(false);
   }, []);
+
+  const handleJourneyProgress = useCallback((value: number) => setJourneyProgress(value), []);
 
   const handleHover = useCallback((id: string | null) => setHoveredId(id), []);
   const handleUserInteract = useCallback(() => setAutoRotate(false), []);
@@ -183,15 +279,140 @@ export default function AchievementAtlas() {
       aria-label="Achievement atlas"
     >
       <Reveal>
-        <SectionLabel comment="map --achievements --3d" title="Achievement Atlas" />
-        <p className="-mt-6 mb-8 max-w-2xl text-sm leading-relaxed text-ink-muted md:-mt-8 md:mb-12">
-          Every milestone plotted as a star. Heavier achievements sit closest to the core, each domain
-          grows out as its own arm, and the whole thing is navigable — orbit it, click a node to
-          inspect it, or pick a milestone from the index underneath.
-        </p>
+        <div className="mb-8 flex flex-col gap-4 md:mb-12 md:flex-row md:items-end md:justify-between">
+          <div>
+            <SectionLabel comment="map --achievements --3d" title="Achievement Atlas" />
+            <p className="-mt-6 max-w-2xl text-sm leading-relaxed text-ink-muted md:-mt-8">
+              Every milestone plotted as a star. Orbit the map freely, or switch to the
+              scroll journey and fly the route — each achievement passes the camera as
+              you scroll.
+            </p>
+          </div>
+
+          {/* View toggle: orbit map vs. scroll-driven journey */}
+          <div
+            role="group"
+            aria-label="Atlas view mode"
+            className="flex shrink-0 items-center gap-1 rounded-full border border-border-glass bg-base-panel/80 p-1 shadow-panel backdrop-blur-md"
+          >
+            <button
+              onClick={() => setView("orbit")}
+              aria-pressed={view === "orbit"}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors ${
+                view === "orbit"
+                  ? "bg-term-green/15 text-term-green"
+                  : "text-ink-faint hover:text-ink-primary"
+              }`}
+            >
+              <FiMap /> map
+            </button>
+            <button
+              onClick={() => setView("journey")}
+              aria-pressed={view === "journey"}
+              className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.15em] transition-colors ${
+                view === "journey"
+                  ? "bg-term-green/15 text-term-green"
+                  : "text-ink-faint hover:text-ink-primary"
+              }`}
+            >
+              <FiCompass /> journey
+            </button>
+          </div>
+        </div>
       </Reveal>
 
-      {/* 3D viewport */}
+      {/* Journey viewport — the panel pins to the screen while the 340vh
+          track beneath it provides the scroll distance. */}
+      {activeView === "journey" && (
+      <Reveal delay={0.05}>
+        {/* The 340vh track is the scroll distance; the panel pins sticky while
+            its top is between the viewport top and the track's end. */}
+        <div ref={spacerRef} className="relative" style={{ height: "340vh" }}>
+          <div className="sticky top-24">
+            <div
+              ref={journeyRef}
+              onPointerDown={(event) => {
+                drag.current = { x: event.clientX, y: event.clientY, dragged: false };
+              }}
+              onPointerMove={(event) => {
+                const state = drag.current;
+                if (
+                  !state.dragged &&
+                  Math.hypot(event.clientX - state.x, event.clientY - state.y) > 6
+                ) {
+                  state.dragged = true;
+                }
+              }}
+              className="relative h-[78vh] min-h-[540px] w-full overflow-hidden rounded-2xl border border-border-glass bg-base-panel shadow-panel"
+            >
+              {activeView === "journey" && (
+                <Suspense fallback={<AtlasLoading />}>
+                  <Timeline3D
+                    nodes={nodes}
+                    activeDomain={activeDomain}
+                    selectedId={selectedId}
+                    spacerRef={spacerRef}
+                    onSelect={handleSelect}
+                    onHover={handleHover}
+                    onProgress={handleJourneyProgress}
+                  />
+                </Suspense>
+              )}
+              {/* Journey HUD: progress + current stop */}
+              <>
+                  <div className="pointer-events-none absolute left-4 right-4 top-4 flex items-center gap-3">
+                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
+                      <div
+                        className="h-full rounded-full bg-term-green/70 transition-[width] duration-150 ease-linear"
+                        style={{ width: `${Math.round(journeyProgress * 100)}%` }}
+                      />
+                    </div>
+                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
+                      {String(journeyStop.index + 1).padStart(2, "0")}/{String(journeyStop.total).padStart(2, "0")}
+                    </span>
+                  </div>
+
+                  <AnimatePresence mode="wait">
+                    {journeyStop.node && (
+                      <motion.div
+                        key={journeyStop.node.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.22 }}
+                        className="pointer-events-none absolute bottom-6 left-6 max-w-sm"
+                      >
+                        <p
+                          className="font-mono text-[10px] uppercase tracking-[0.2em]"
+                          style={{ color: DOMAIN_COLORS[journeyStop.node.domain] }}
+                        >
+                          {ATLAS_DOMAINS.find((d) => d.id === journeyStop.node?.domain)?.label}
+                        </p>
+                        <p className="mt-1 font-mono text-lg font-semibold leading-snug text-ink-primary">
+                          {journeyStop.node.title}
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+                          {journeyStop.node.summary}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+              </>
+
+              <HoverTooltip hoveredId={hoveredId} containerRef={journeyRef} />
+
+              {/* Inspector (shared) */}
+              <AnimatePresence>
+                {selected && <InspectorPanel selected={selected} onClose={() => handleSelect(null)} />}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      </Reveal>
+      )}
+
+      {/* Static map viewport — shown in orbit mode */}
+      {activeView === "orbit" && (
       <Reveal delay={0.05}>
         <div
           ref={containerRef}
@@ -261,77 +482,10 @@ export default function AchievementAtlas() {
           <HoverTooltip hoveredId={hoveredId} containerRef={containerRef} />
 
           {/* Inspector */}
-          <AnimatePresence>
-            {selected && (
-              <motion.aside
-                key={selected.id}
-                initial={{ opacity: 0, x: 28 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 28 }}
-                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                className="absolute inset-y-0 right-0 w-full max-w-sm overflow-y-auto border-l border-border-glass bg-base/92 p-5 backdrop-blur-xl"
-              >
-                <div className="mb-4 flex items-start justify-between gap-3">
-                  <span
-                    className="rounded-full border px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider"
-                    style={{
-                      color: DOMAIN_COLORS[selected.domain],
-                      borderColor: `${DOMAIN_COLORS[selected.domain]}40`,
-                      backgroundColor: `${DOMAIN_COLORS[selected.domain]}14`,
-                    }}
-                  >
-                    {ATLAS_DOMAINS.find((d) => d.id === selected.domain)?.label}
-                  </span>
-
-                  <button
-                    onClick={() => handleSelect(null)}
-                    aria-label="Close inspector"
-                    className="rounded-md p-1 text-ink-faint transition-colors hover:text-term-green"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <h3 className="font-mono text-lg font-semibold leading-snug text-ink-primary">
-                  {selected.title}
-                </h3>
-
-                {selected.period && (
-                  <p className="mt-1 font-mono text-[11px] text-ink-faint">{selected.period}</p>
-                )}
-
-                <p className="mt-4 text-sm leading-relaxed text-ink-muted">
-                  {selected.detail ?? selected.summary}
-                </p>
-
-                {selected.meta && selected.meta.length > 0 && (
-                  <div className="mt-5 flex flex-wrap gap-1.5">
-                    {selected.meta.map((item) => (
-                      <span
-                        key={item}
-                        className="rounded-md border border-white/[0.06] bg-white/[0.04] px-2 py-1 font-mono text-[11px] text-ink-muted"
-                      >
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {selected.href && (
-                  <a
-                    href={selected.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-6 inline-flex items-center gap-2 rounded-lg border border-term-green/30 bg-term-green/10 px-4 py-2.5 font-mono text-xs text-term-green transition-colors hover:bg-term-green/20"
-                  >
-                    View source <FiArrowUpRight />
-                  </a>
-                )}
-              </motion.aside>
-            )}
-          </AnimatePresence>
+          <AnimatePresence>{selected && <InspectorPanel selected={selected} onClose={() => handleSelect(null)} />}          </AnimatePresence>
         </div>
       </Reveal>
+      )}
 
       {/* Domain filter */}
       <Reveal delay={0.1}>
