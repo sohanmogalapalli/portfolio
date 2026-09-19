@@ -144,7 +144,7 @@ export default function Terminal({ onNavigate }: { onNavigate: (sectionId: strin
         <TerminalChrome />
         <div
           ref={scrollRef}
-          className="font-mono text-[13px] sm:text-sm leading-relaxed px-5 py-5 h-[340px] sm:h-[380px] overflow-y-auto"
+          className="font-mono text-[12px] sm:text-[13px] md:text-sm leading-relaxed px-4 sm:px-5 py-4 sm:py-5 h-[260px] sm:h-[320px] md:h-[380px] overflow-y-auto"
         >
           {/* Boot sequence */}
           {revealedBoot.map((line, idx) =>

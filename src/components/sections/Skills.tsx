@@ -10,7 +10,7 @@ export default function Skills() {
         <SectionLabel comment="ls -la skills/" title="Skills" />
       </Reveal>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {skillCategories.map((cat, i) => (
           <SkillCard key={cat.id} category={cat} index={i} />
         ))}

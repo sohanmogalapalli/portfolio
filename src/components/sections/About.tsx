@@ -11,7 +11,7 @@ export default function About() {
         <SectionLabel comment="cat about.md" title="About" />
       </Reveal>
 
-      <div className="grid md:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-5 sm:gap-6">
         <Reveal className="md:col-span-3" delay={0.05}>
           <GlassPanel className="p-6 sm:p-8 h-full">
             <p className="font-mono text-xs text-term-greenDim mb-4">SUMMARY</p>

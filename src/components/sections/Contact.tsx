@@ -24,7 +24,7 @@ export default function Contact() {
             want to talk about AI and cloud systems? Open a connection below."
           </p>
 
-          <div className="grid sm:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
             {CONTACT_LINKS.map(({ label, value, href, icon: Icon }) => (
               <a
                 key={label}

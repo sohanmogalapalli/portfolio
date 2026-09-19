@@ -11,7 +11,7 @@ export default function Hero() {
   return (
     <section
       id="hero"
-      className="relative min-h-screen flex flex-col items-center justify-center px-4 pt-28 pb-16 overflow-hidden"
+      className="relative min-h-screen flex flex-col items-center justify-center px-3 sm:px-4 pt-24 sm:pt-28 pb-12 sm:pb-16 overflow-hidden"
       aria-label="Introduction"
     >
       <div className="absolute inset-0 bg-grid-fade" aria-hidden="true" />
@@ -30,7 +30,7 @@ export default function Hero() {
         initial={{ opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.05 }}
-        className="text-center font-mono font-extrabold text-3xl sm:text-5xl md:text-6xl tracking-tight text-ink-primary mb-3"
+        className="text-center font-mono font-extrabold text-2xl sm:text-4xl md:text-6xl tracking-tight text-ink-primary mb-3"
       >
         Hi, I'm <span className="text-term-green">Sohan</span>
         <span className="text-term-greenDim">.</span>
@@ -40,7 +40,7 @@ export default function Hero() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6, delay: 0.12 }}
-        className="text-center text-ink-muted max-w-md mb-10 text-sm sm:text-base"
+        className="text-center text-ink-muted max-w-md mb-8 sm:mb-10 text-xs sm:text-base"
       >
         Type a command below, or just watch the session run itself.
       </motion.p>
@@ -52,7 +52,7 @@ export default function Hero() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 1 }}
         onClick={() => handleNavigate("about")}
-        className="mt-14 flex flex-col items-center gap-2 text-ink-faint hover:text-term-green transition-colors"
+        className="mt-10 sm:mt-14 flex flex-col items-center gap-2 text-ink-faint hover:text-term-green transition-colors"
         aria-label="Scroll to explore the portfolio"
       >
         <span className="font-mono text-[11px] uppercase tracking-[0.3em]">scroll</span>

@@ -121,7 +121,7 @@ function InspectorPanel({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 28 }}
       transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="absolute inset-y-0 right-0 z-10 w-full max-w-sm overflow-y-auto border-l border-border-glass bg-base/92 p-5 backdrop-blur-xl"
+      className="absolute inset-y-0 right-0 z-10 w-full sm:w-80 max-w-sm overflow-y-auto border-l border-border-glass bg-base/92 p-5 backdrop-blur-xl max-sm:inset-x-0 max-sm:inset-y-auto max-sm:bottom-0 max-sm:top-auto max-sm:h-[60vh] max-sm:border-l-0 max-sm:border-t max-sm:rounded-t-2xl"
     >
       <div className="mb-4 flex items-start justify-between gap-3">
         <span
@@ -188,12 +188,8 @@ function InspectorPanel({
 export default function AchievementAtlas() {
   const reduceMotion = useReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
-  const journeyRef = useRef<HTMLDivElement>(null);
-  const spacerRef = useRef<HTMLDivElement>(null);
+  const journeyContainerRef = useRef<HTMLDivElement>(null);
 
-  // Orbiting necessarily ends in a "click" on empty space, which would clear
-  // the selection every time the user rotates the camera. Track drag distance
-  // so only a genuine click on nothing deselects.
   const drag = useRef({ x: 0, y: 0, dragged: false });
 
   const [webgl, setWebgl] = useState(true);
@@ -205,20 +201,20 @@ export default function AchievementAtlas() {
   const [view, setView] = useState<AtlasView>("orbit");
   const [journeyProgress, setJourneyProgress] = useState(0);
 
+  // Mutable ref kept in sync with state, so the 3D render loop can read it
+  // every frame without triggering React re-renders.
+  const journeyProgressRef = useRef(0);
+
   useEffect(() => {
     setWebgl(detectWebGL());
   }, []);
 
-  // Positions never change for a given dataset, so compute them exactly once.
   const nodes = useMemo(() => buildAtlasNodes(achievements, ATLAS_DOMAINS), []);
 
   const canRender3D = webgl && !reduceMotion;
-  // The journey needs live WebGL and smooth scrolling; anything less falls
-  // back to the orbit map / static view.
   const activeView: AtlasView = canRender3D ? view : "orbit";
   const selected = selectedId ? achievements.find((item) => item.id === selectedId) : undefined;
 
-  /** Nearest achievement to the journey camera, for the "now passing" HUD label. */
   const journeyStop = useMemo(() => {
     const ordered = buildJourneyStops(nodes);
     const index = Math.round(journeyProgress * Math.max(0, ordered.length - 1));
@@ -249,12 +245,49 @@ export default function AchievementAtlas() {
     return () => observer.disconnect();
   }, [canRender3D, activeView]);
 
+  /**
+   * Wheel-capture for the journey viewport.
+   * When the pointer is over the journey panel and the animation hasn't hit
+   * a boundary, we intercept the wheel event so the 3D animation advances
+   * instead of the page scrolling. Once progress reaches 0 or 1 the wheel
+   * passes through and the page scrolls normally to the next section.
+   */
+  useEffect(() => {
+    const el = journeyContainerRef.current;
+    if (!el || activeView !== "journey") return;
+
+    const handler = (e: WheelEvent) => {
+      // Ignore horizontal scrolls
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+
+      const current = journeyProgressRef.current;
+      const delta = e.deltaY * 0.0006;
+      const next = Math.max(0, Math.min(1, current + delta));
+
+      // At the start and scrolling backward, or at the end and scrolling
+      // forward — let the native scroll happen so the user can move on.
+      if ((current <= 0 && delta < 0) || (current >= 1 && delta > 0)) {
+        return;
+      }
+
+      e.preventDefault();
+      journeyProgressRef.current = next;
+      setJourneyProgress(next);
+    };
+
+    el.addEventListener("wheel", handler, { passive: false });
+    return () => el.removeEventListener("wheel", handler);
+  }, [activeView]);
+
   const handleSelect = useCallback((id: string | null) => {
     setSelectedId(id);
     setAutoRotate(false);
   }, []);
 
-  const handleJourneyProgress = useCallback((value: number) => setJourneyProgress(value), []);
+  const handleJourneyProgress = useCallback((value: number) => {
+    journeyProgressRef.current = value;
+    setJourneyProgress(value);
+  }, []);
 
   const handleHover = useCallback((id: string | null) => setHoveredId(id), []);
   const handleUserInteract = useCallback(() => setAutoRotate(false), []);
@@ -289,7 +322,7 @@ export default function AchievementAtlas() {
             </p>
           </div>
 
-          {/* View toggle: orbit map vs. scroll-driven journey */}
+          {/* View toggle */}
           <div
             role="group"
             aria-label="Atlas view mode"
@@ -321,170 +354,184 @@ export default function AchievementAtlas() {
         </div>
       </Reveal>
 
-      {/* Journey viewport — the panel pins to the screen while the 340vh
-          track beneath it provides the scroll distance. */}
+      {/* ── Journey viewport ───────────────────────────────────────────
+          Wheel events inside this container drive the 3D animation.
+          Scrolling outside (or once progress hits 0/1) scrolls the page
+          normally to the next section. No giant spacer needed. */}
       {activeView === "journey" && (
-      <Reveal delay={0.05}>
-        {/* The 340vh track is the scroll distance; the panel pins sticky while
-            its top is between the viewport top and the track's end. */}
-        <div ref={spacerRef} className="relative" style={{ height: "340vh" }}>
-          <div className="sticky top-24">
-            <div
-              ref={journeyRef}
-              onPointerDown={(event) => {
-                drag.current = { x: event.clientX, y: event.clientY, dragged: false };
-              }}
-              onPointerMove={(event) => {
-                const state = drag.current;
-                if (
-                  !state.dragged &&
-                  Math.hypot(event.clientX - state.x, event.clientY - state.y) > 6
-                ) {
-                  state.dragged = true;
-                }
-              }}
-              className="relative h-[78vh] min-h-[540px] w-full overflow-hidden rounded-2xl border border-border-glass bg-base-panel shadow-panel"
-            >
-              {activeView === "journey" && (
-                <Suspense fallback={<AtlasLoading />}>
-                  <Timeline3D
-                    nodes={nodes}
-                    activeDomain={activeDomain}
-                    selectedId={selectedId}
-                    spacerRef={spacerRef}
-                    onSelect={handleSelect}
-                    onHover={handleHover}
-                    onProgress={handleJourneyProgress}
-                  />
-                </Suspense>
-              )}
-              {/* Journey HUD: progress + current stop */}
-              <>
-                  <div className="pointer-events-none absolute left-4 right-4 top-4 flex items-center gap-3">
-                    <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
-                      <div
-                        className="h-full rounded-full bg-term-green/70 transition-[width] duration-150 ease-linear"
-                        style={{ width: `${Math.round(journeyProgress * 100)}%` }}
-                      />
-                    </div>
-                    <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
-                      {String(journeyStop.index + 1).padStart(2, "0")}/{String(journeyStop.total).padStart(2, "0")}
-                    </span>
-                  </div>
-
-                  <AnimatePresence mode="wait">
-                    {journeyStop.node && (
-                      <motion.div
-                        key={journeyStop.node.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                        transition={{ duration: 0.22 }}
-                        className="pointer-events-none absolute bottom-6 left-6 max-w-sm"
-                      >
-                        <p
-                          className="font-mono text-[10px] uppercase tracking-[0.2em]"
-                          style={{ color: DOMAIN_COLORS[journeyStop.node.domain] }}
-                        >
-                          {ATLAS_DOMAINS.find((d) => d.id === journeyStop.node?.domain)?.label}
-                        </p>
-                        <p className="mt-1 font-mono text-lg font-semibold leading-snug text-ink-primary">
-                          {journeyStop.node.title}
-                        </p>
-                        <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-                          {journeyStop.node.summary}
-                        </p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-              </>
-
-              <HoverTooltip hoveredId={hoveredId} containerRef={journeyRef} />
-
-              {/* Inspector (shared) */}
-              <AnimatePresence>
-                {selected && <InspectorPanel selected={selected} onClose={() => handleSelect(null)} />}
-              </AnimatePresence>
-            </div>
-          </div>
-        </div>
-      </Reveal>
-      )}
-
-      {/* Static map viewport — shown in orbit mode */}
-      {activeView === "orbit" && (
-      <Reveal delay={0.05}>
-        <div
-          ref={containerRef}
-          onPointerDown={(event) => {
-            drag.current = { x: event.clientX, y: event.clientY, dragged: false };
-          }}
-          onPointerMove={(event) => {
-            const state = drag.current;
-            if (
-              !state.dragged &&
-              Math.hypot(event.clientX - state.x, event.clientY - state.y) > 6
-            ) {
-              state.dragged = true;
-            }
-          }}
-          className="relative h-[78vh] min-h-[540px] overflow-hidden rounded-2xl border border-border-glass bg-base-panel shadow-panel"
-        >
-          {canRender3D ? (
-            engineReady ? (
+        <Reveal delay={0.05}>
+          <div
+            ref={journeyContainerRef}
+            onPointerDown={(event) => {
+              drag.current = { x: event.clientX, y: event.clientY, dragged: false };
+            }}
+            onPointerMove={(event) => {
+              const state = drag.current;
+              if (
+                !state.dragged &&
+                Math.hypot(event.clientX - state.x, event.clientY - state.y) > 6
+              ) {
+                state.dragged = true;
+              }
+            }}
+            className="relative h-[50vh] min-h-[360px] sm:h-[65vh] sm:min-h-[480px] md:h-[78vh] md:min-h-[540px] w-full overflow-hidden rounded-2xl border border-border-glass bg-base-panel shadow-panel touch-none"
+          >
+            {activeView === "journey" && (
               <Suspense fallback={<AtlasLoading />}>
-                <AtlasCanvas
+                <Timeline3D
                   nodes={nodes}
-                  domains={ATLAS_DOMAINS}
                   activeDomain={activeDomain}
                   selectedId={selectedId}
-                  autoRotate={autoRotate}
+                  progressRef={journeyProgressRef}
                   onSelect={handleSelect}
                   onHover={handleHover}
-                  onUserInteract={handleUserInteract}
-                  onPointerMissed={handlePointerMissed}
+                  onProgress={handleJourneyProgress}
                 />
               </Suspense>
+            )}
+
+            {/* Journey HUD: progress + current stop */}
+            <div className="pointer-events-none absolute left-4 right-4 top-4 flex items-center gap-3">
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/[0.08]">
+                <div
+                  className="h-full rounded-full bg-term-green/70 transition-[width] duration-150 ease-linear"
+                  style={{ width: `${Math.round(journeyProgress * 100)}%` }}
+                />
+              </div>
+              <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
+                {String(journeyStop.index + 1).padStart(2, "0")}/{String(journeyStop.total).padStart(2, "0")}
+              </span>
+            </div>
+
+            {/* Scroll hint */}
+            {journeyProgress === 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="pointer-events-none absolute bottom-6 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1"
+              >
+                <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
+                  scroll inside to fly
+                </span>
+                <motion.span
+                  animate={{ y: [0, 4, 0] }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                  className="text-term-greenDim text-sm"
+                >
+                  ↓
+                </motion.span>
+              </motion.div>
+            )}
+
+            <AnimatePresence mode="wait">
+              {journeyStop.node && (
+                <motion.div
+                  key={journeyStop.node.id}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.22 }}
+                  className="pointer-events-none absolute bottom-6 left-6 max-w-xs sm:max-w-sm"
+                >
+                  <p
+                    className="font-mono text-[10px] uppercase tracking-[0.2em]"
+                    style={{ color: DOMAIN_COLORS[journeyStop.node.domain] }}
+                  >
+                    {ATLAS_DOMAINS.find((d) => d.id === journeyStop.node?.domain)?.label}
+                  </p>
+                  <p className="mt-1 font-mono text-base sm:text-lg font-semibold leading-snug text-ink-primary">
+                    {journeyStop.node.title}
+                  </p>
+                  <p className="mt-1 text-xs sm:text-sm leading-relaxed text-ink-muted">
+                    {journeyStop.node.summary}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <HoverTooltip hoveredId={hoveredId} containerRef={journeyContainerRef} />
+
+            <AnimatePresence>
+              {selected && <InspectorPanel selected={selected} onClose={() => handleSelect(null)} />}
+            </AnimatePresence>
+          </div>
+        </Reveal>
+      )}
+
+      {/* ── Static map viewport (orbit mode) ───────────────────────── */}
+      {activeView === "orbit" && (
+        <Reveal delay={0.05}>
+          <div
+            ref={containerRef}
+            onPointerDown={(event) => {
+              drag.current = { x: event.clientX, y: event.clientY, dragged: false };
+            }}
+            onPointerMove={(event) => {
+              const state = drag.current;
+              if (
+                !state.dragged &&
+                Math.hypot(event.clientX - state.x, event.clientY - state.y) > 6
+              ) {
+                state.dragged = true;
+              }
+            }}
+            className="relative h-[50vh] min-h-[360px] sm:h-[65vh] sm:min-h-[480px] md:h-[78vh] md:min-h-[540px] overflow-hidden rounded-2xl border border-border-glass bg-base-panel shadow-panel"
+          >
+            {canRender3D ? (
+              engineReady ? (
+                <Suspense fallback={<AtlasLoading />}>
+                  <AtlasCanvas
+                    nodes={nodes}
+                    domains={ATLAS_DOMAINS}
+                    activeDomain={activeDomain}
+                    selectedId={selectedId}
+                    autoRotate={autoRotate}
+                    onSelect={handleSelect}
+                    onHover={handleHover}
+                    onUserInteract={handleUserInteract}
+                    onPointerMissed={handlePointerMissed}
+                  />
+                </Suspense>
+              ) : (
+                <AtlasLoading />
+              )
             ) : (
-              <AtlasLoading />
-            )
-          ) : (
-            <AtlasFallback />
-          )}
+              <AtlasFallback />
+            )}
 
-          {/* Corner HUD readouts */}
-          <div className="pointer-events-none absolute left-4 top-4 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
-            <span className="text-term-greenDim">●</span> {nodes.length} nodes · {ATLAS_DOMAINS.length} domains
+            {/* Corner HUD readouts */}
+            <div className="pointer-events-none absolute left-4 top-4 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
+              <span className="text-term-greenDim">●</span> {nodes.length} nodes · {ATLAS_DOMAINS.length} domains
+            </div>
+            <div className="pointer-events-none absolute right-4 top-4 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
+              {autoRotate ? "auto-orbit" : canRender3D ? "manual" : "static"}
+            </div>
+
+            {/* Controls hint */}
+            <div className="pointer-events-none absolute bottom-4 left-1/2 hidden -translate-x-1/2 gap-4 rounded-full border border-border-glass bg-base/70 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-faint backdrop-blur-md sm:flex">
+              <span>drag to orbit</span>
+              <span className="text-term-greenDim">·</span>
+              <span>scroll to zoom</span>
+              <span className="text-term-greenDim">·</span>
+              <span>click to inspect</span>
+            </div>
+
+            {/* Reset */}
+            {canRender3D && selectedId && (
+              <button
+                onClick={() => handleSelect(null)}
+                className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full border border-border-glass bg-base/70 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted backdrop-blur-md transition-colors hover:border-term-green/40 hover:text-term-green"
+              >
+                <FiRotateCcw /> reset view
+              </button>
+            )}
+
+            <HoverTooltip hoveredId={hoveredId} containerRef={containerRef} />
+
+            <AnimatePresence>{selected && <InspectorPanel selected={selected} onClose={() => handleSelect(null)} />}          </AnimatePresence>
           </div>
-          <div className="pointer-events-none absolute right-4 top-4 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-faint">
-            {autoRotate ? "auto-orbit" : canRender3D ? "manual" : "static"}
-          </div>
-
-          {/* Controls hint */}
-          <div className="pointer-events-none absolute bottom-4 left-1/2 hidden -translate-x-1/2 gap-4 rounded-full border border-border-glass bg-base/70 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-faint backdrop-blur-md sm:flex">
-            <span>drag to orbit</span>
-            <span className="text-term-greenDim">·</span>
-            <span>scroll to zoom</span>
-            <span className="text-term-greenDim">·</span>
-            <span>click to inspect</span>
-          </div>
-
-          {/* Reset */}
-          {canRender3D && selectedId && (
-            <button
-              onClick={() => handleSelect(null)}
-              className="absolute bottom-4 left-4 flex items-center gap-1.5 rounded-full border border-border-glass bg-base/70 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted backdrop-blur-md transition-colors hover:border-term-green/40 hover:text-term-green"
-            >
-              <FiRotateCcw /> reset view
-            </button>
-          )}
-
-          <HoverTooltip hoveredId={hoveredId} containerRef={containerRef} />
-
-          {/* Inspector */}
-          <AnimatePresence>{selected && <InspectorPanel selected={selected} onClose={() => handleSelect(null)} />}          </AnimatePresence>
-        </div>
-      </Reveal>
+        </Reveal>
       )}
 
       {/* Domain filter */}
@@ -533,9 +580,9 @@ export default function AchievementAtlas() {
         </div>
       </Reveal>
 
-      {/* Text index — the accessible, crawlable counterpart to the 3D map */}
+      {/* Text index */}
       <Reveal delay={0.15}>
-        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           {grouped.map(({ domain, items }) => (
             <div key={domain.id} aria-label={domain.label}>
               <div className="mb-3 flex items-center gap-2">

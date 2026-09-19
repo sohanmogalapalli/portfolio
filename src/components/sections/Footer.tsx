@@ -6,8 +6,8 @@ export default function Footer() {
 
   return (
     <footer className="relative border-t border-border-glass px-4 sm:px-6 py-8" role="contentinfo">
-      <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 font-mono text-xs text-ink-faint">
-        <p>
+      <div className="max-w-6xl mx-auto flex flex-col items-center justify-between gap-3 sm:gap-4 font-mono text-[10px] sm:text-xs text-ink-faint text-center sm:text-left">
+        <p className="sm:flex-1">
           <span className="text-term-greenDim">$</span> echo "connection closed · 0 packets lost · built with React
           + Vite"
         </p>

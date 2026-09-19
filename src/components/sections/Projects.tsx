@@ -10,7 +10,7 @@ export default function Projects() {
         <SectionLabel comment="ls projects/ --detailed" title="Projects" />
       </Reveal>
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         {projects.map((p, i) => (
           <ProjectCard key={p.id} project={p} index={i} />
         ))}
