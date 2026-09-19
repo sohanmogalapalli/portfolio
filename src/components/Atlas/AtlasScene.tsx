@@ -4,52 +4,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import * as THREE from "three";
 import type { AtlasDomain, AtlasDomainMeta, AtlasNode } from "@/types";
 import AchievementNode from "./AchievementNode";
+import Starfield from "./Starfield";
 import { DOMAIN_COLORS } from "./atlasLayout";
 
 const RING_RADII = [6, 9, 12, 15];
-
-/* ── Starfield ───────────────────────────────────────────────────────── */
-
-/** Points scattered through a thick shell, rotating almost imperceptibly. */
-function Starfield({ count = 1400 }: { count?: number }) {
-  const ref = useRef<THREE.Points>(null);
-
-  const positions = useMemo(() => {
-    const array = new Float32Array(count * 3);
-
-    for (let i = 0; i < count; i += 1) {
-      const radius = 36 + Math.random() * 48;
-      const theta = Math.random() * Math.PI * 2;
-      const phi = Math.acos(2 * Math.random() - 1);
-
-      array[i * 3] = radius * Math.sin(phi) * Math.cos(theta);
-      array[i * 3 + 1] = radius * Math.cos(phi) * 0.7;
-      array[i * 3 + 2] = radius * Math.sin(phi) * Math.sin(theta);
-    }
-
-    return array;
-  }, [count]);
-
-  useFrame((_, delta) => {
-    if (ref.current) ref.current.rotation.y += delta * 0.012;
-  });
-
-  return (
-    <points ref={ref} frustumCulled={false}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <pointsMaterial
-        size={0.4}
-        color="#9fb5ac"
-        transparent
-        opacity={0.5}
-        sizeAttenuation
-        depthWrite={false}
-      />
-    </points>
-  );
-}
 
 /* ── Core ────────────────────────────────────────────────────────────── */
 

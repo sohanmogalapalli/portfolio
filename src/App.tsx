@@ -15,7 +15,7 @@ export default function App() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="relative min-h-screen bg-base overflow-x-hidden"
+      className="relative min-h-screen bg-base overflow-x-clip"
     >
       <a
         href="#hero"
